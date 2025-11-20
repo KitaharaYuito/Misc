@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>投資利益分析ダッシュボード</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+        }
+        /* Custom styles for Chart.js dark theme */
+        .chart-container {
+            position: relative;
+            height: 40vh;
+            width: 100%;
+        }
+        .drag-over {
+            border-color: #4f46e5;
+            background-color: #1f2937;
+        }
+        /* Tooltip arrow */
+        .tooltip-arrow,
+        .tooltip-arrow::before {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: inherit;
+        }
+        .tooltip-arrow {
+            visibility: hidden;
+        }
+        .tooltip-arrow::before {
+            visibility: visible;
+            content: '';
+            transform: rotate(45deg);
+        }
+        .group:hover .tooltip-arrow {
+            bottom: -4px;
+        }
+        /* Custom tab styles */
+        .tab-btn.active {
+            background-color: #4f46e5;
+            color: #ffffff;
+        }
+        /* Preset commission button styles */
+        .preset-btn {
+            padding: 4px 8px;
+            font-size: 12px;
+            border-radius: 6px;
+            background-color: #374151; /* gray-700 */
+            color: #d1d5db; /* gray-300 */
+            transition: background-color 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+        .preset-btn:hover {
+            background-color: #4b5563; /* gray-600 */
+        }
+        .preset-btn.active {
+            background-color: #4f46e5; /* indigo-600 */
+            color: #ffffff;
+            font-weight: 600;
+        }
+        
+        /* Custom Tooltip for Chart.js */
+        #chartjs-tooltip {
+            opacity: 1;
+            position: absolute;
+            background: rgba(31, 41, 55, 0.9);
+            color: white;
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            pointer-events: none;
+            transition: all .1s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 280px; /* Fixed width for tooltip */
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .tooltip-body {
+            font-size: 0.875rem;
+        }
+        .tooltip-pie-container {
+            width: 150px;
+            height: 150px;
+            margin: 0.5rem auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-white mb-2">投資利益分析ダッシュボード</h1>
+            <p class="text-lg text-gray-400">CSVファイルをアップロードして、取引パフォーマンスを可視化します。</p>
+        </header>
+
+        <div id="upload-area" class="max-w-3xl mx-auto mb-8">
+            <label for="csv-file-input" class="flex justify-center w-full h-48 px-4 transition bg-gray-800 border-2 border-gray-600 border-dashed rounded-xl appearance-none cursor-pointer hover:border-indigo-500 focus:outline-none">
+                <span class="flex items-center space-x-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    <span class="font-medium text-gray-400">
+                        ここにCSVファイルをドロップ
+                        <span class="text-indigo-400 underline">またはクリックして選択</span>
+                    </span>
+                </span>
+                <input type="file" id="csv-file-input" class="hidden" accept=".csv">
+            </label>
+        </div>
+        
+        <div id="file-info-area" class="hidden max-w-3xl mx-auto mb-8 p-4 bg-gray-800 rounded-xl flex items-center justify-between">
+            <p id="file-name-display" class="text-gray-300 truncate pr-4"></p>
+            <button id="change-file-btn" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-md text-white font-semibold transition-colors text-sm flex-shrink-0">
+                ファイル変更
+            </button>
+        </div>
+        
+        <div id="error-message" class="hidden max-w-3xl mx-auto p-4 mb-4 text-sm text-red-200 bg-red-900 rounded-lg" role="alert">
+            <span class="font-medium">エラー:</span> <span id="error-text"></span>
+        </div>
+
+        <main id="dashboard" class="hidden">
+            <section id="kpi-grid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8">
+                </section>
+
+            <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold mb-4 text-white">累積利益の推移</h2>
+                    <div class="chart-container">
+                        <canvas id="cumulativeProfitChart"></canvas>
+                    </div>
+                </div>
+                 <div class="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold mb-4 text-white">トレードごとの利益</h2>
+                    <div class="chart-container">
+                        <canvas id="profitPerTradeChart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold mb-4 text-white">月次パフォーマンス</h2>
+                    <div class="chart-container">
+                        <canvas id="monthlyPerformanceChart"></canvas>
+                    </div>
+                </div>
+                 <div class="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold mb-4 text-white">曜日別パフォーマンス</h2>
+                    <div class="chart-container">
+                        <canvas id="dayOfWeekChart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold mb-4 text-white">取引時間 vs 損益</h2>
+                    <div class="chart-container">
+                        <canvas id="durationProfitChart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold mb-4 text-white">シンボル別 損益</h2>
+                    <div class="chart-container">
+                        <canvas id="profitBySymbolChart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold mb-4 text-white">戦略別 損益</h2>
+                    <div class="chart-container" style="overflow-y: auto;">
+                        <div id="profitByStrategyChartWrapper">
+                           <canvas id="profitByStrategyChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold mb-4 text-white">売り/買い タイプ別成績</h2>
+                    <div class="chart-container">
+                        <canvas id="tradeTypeAnalysisChart"></canvas>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="commission-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden z-50">
+        <div class="bg-gray-800 rounded-xl p-8 w-full max-w-2xl shadow-2xl">
+            <h2 class="text-2xl font-bold mb-4 text-white">手数料設定</h2>
+            
+            <div class="border-b border-gray-700 mb-4">
+                <nav class="-mb-px flex space-x-4" aria-label="Tabs">
+                    <button class="tab-btn active whitespace-nowrap py-3 px-4 border-b-2 border-transparent font-medium text-sm text-gray-400 hover:text-white hover:border-gray-500" data-tab="bulk">
+                        一括設定
+                    </button>
+                    <button class="tab-btn whitespace-nowrap py-3 px-4 border-b-2 border-transparent font-medium text-sm text-gray-400 hover:text-white hover:border-gray-500" data-tab="individual">
+                        個別設定
+                    </button>
+                </nav>
+            </div>
+
+            <div id="tab-content-bulk">
+                <div class="mb-4">
+                    <label for="commission-slider" class="block mb-2 text-sm font-medium text-gray-300">手数料率 (勝ちトレードのみ): <span id="commission-value" class="font-bold text-lg text-indigo-400">0.0</span>%</label>
+                    <input id="commission-slider" type="range" min="0" max="50" value="0" step="0.1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                </div>
+                <div class="bg-gray-900 p-4 rounded-lg text-center">
+                    <p class="text-sm text-gray-400">適用後の総利益 (純利益)</p>
+                    <p id="realtime-profit-display" class="text-xl font-bold text-green-400 mt-1">$0.00</p>
+                </div>
+            </div>
+
+            <div id="tab-content-individual" class="hidden">
+                 <p class="text-sm text-gray-400 mb-4">ストラテジーごとに手数料率を設定します。プリセット値を選択するか、直接数値を入力してください。</p>
+                 <div id="individual-commission-list" class="max-h-72 overflow-y-auto space-y-2 pr-2">
+                     </div>
+            </div>
+
+            <div class="flex justify-end space-x-4 mt-6">
+                <button id="close-modal-btn" class="px-5 py-2 bg-gray-600 hover:bg-gray-500 rounded-md text-white font-semibold transition-colors">閉じる</button>
+                <button id="apply-commission-btn" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-md text-white font-semibold transition-colors">適用</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // Global State
+        const chartInstances = {};
+        let originalTrades = [];
+        let globalCommissionSettings = {
+            mode: 'bulk', // 'bulk' or 'individual'
+            bulkRate: 0,
+            individualRates: {}
+        };
+        let modalCommissionSettings = {}; // Used for temporary edits in modal
+        let currentUsdJpyRate = 150;
+
+        // --- Load settings from Local Storage on script start ---
+        function loadSettingsFromStorage() {
+            const savedSettings = localStorage.getItem('investmentDashboardCommissionSettings');
+            if (savedSettings) {
+                try {
+                    const parsedSettings = JSON.parse(savedSettings);
+                    if (parsedSettings && typeof parsedSettings === 'object') {
+                        globalCommissionSettings.mode = parsedSettings.mode || 'bulk';
+                        globalCommissionSettings.bulkRate = parsedSettings.bulkRate || 0;
+                        globalCommissionSettings.individualRates = parsedSettings.individualRates || {};
+                    }
+                } catch (e) {
+                    console.error("Failed to parse saved settings:", e);
+                }
+            }
+        }
+        loadSettingsFromStorage();
+
+        // DOM Elements
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('csv-file-input');
+        const dashboard = document.getElementById('dashboard');
+        const errorMessage = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        // New UI Elements
+        const fileInfoArea = document.getElementById('file-info-area');
+        const fileNameDisplay = document.getElementById('file-name-display');
+        const changeFileBtn = document.getElementById('change-file-btn');
+        
+        // Modal DOM Elements
+        const commissionModal = document.getElementById('commission-modal');
+        const commissionSlider = document.getElementById('commission-slider');
+        const commissionValue = document.getElementById('commission-value');
+        const realtimeProfitDisplay = document.getElementById('realtime-profit-display');
+        const individualListContainer = document.getElementById('individual-commission-list');
+        const applyCommissionBtn = document.getElementById('apply-commission-btn');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const tabs = document.querySelectorAll('.tab-btn');
+        const bulkTabContent = document.getElementById('tab-content-bulk');
+        const individualTabContent = document.getElementById('tab-content-individual');
+
+        // --- Event Listeners ---
+        uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFileSelect({ target: fileInput });
+            }
+        });
+        fileInput.addEventListener('change', handleFileSelect);
+        changeFileBtn.addEventListener('click', () => fileInput.click());
+
+
+        // --- Core Functions ---
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            dashboard.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const csvText = e.target.result;
+                    originalTrades = parseCSV(csvText);
+                    if (originalTrades.length === 0) {
+                        throw new Error("CSVファイルに有効な取引データが含まれていないか、形式が正しくありません。");
+                    }
+                    
+                    try {
+                        const response = await fetch('https://open.er-api.com/v6/latest/USD');
+                        if (!response.ok) throw new Error('Could not fetch exchange rate.');
+                        const data = await response.json();
+                        currentUsdJpyRate = data.rates.JPY;
+                    } catch (fetchError) {
+                        console.error("Could not fetch exchange rate. Using a default value.", fetchError);
+                        currentUsdJpyRate = 150;
+                    }
+                    
+                    recalculateAndRedraw();
+                    dashboard.classList.remove('hidden');
+                    
+                    // --- UI change on success ---
+                    uploadArea.classList.add('hidden');
+                    fileNameDisplay.textContent = `分析中のファイル: ${file.name}`;
+                    fileInfoArea.classList.remove('hidden');
+
+                } catch (error) {
+                    showError(error.message);
+                    console.error("Error processing file:", error);
+                }
+            };
+            reader.onerror = () => showError("ファイルの読み込み中にエラーが発生しました。");
+            reader.readAsText(file);
+        }
+        
+        function recalculateAndRedraw() {
+            if (originalTrades.length === 0) return;
+            const tradesToAnalyze = JSON.parse(JSON.stringify(originalTrades));
+            const analysis = analyzeTrades(tradesToAnalyze, globalCommissionSettings);
+            updateDashboard(analysis, currentUsdJpyRate);
+        }
+
+        function calculateRealtimeProfit(rate) {
+            if (originalTrades.length === 0) return 0;
+            let totalProfit = 0;
+            originalTrades.forEach(trade => {
+                const originalProfit = trade.profit;
+                const netProfit = originalProfit > 0 ? originalProfit * (1 - rate / 100) : originalProfit;
+                totalProfit += netProfit;
+            });
+            return totalProfit;
+        }
+
+        function showError(message) {
+            errorText.textContent = message;
+            errorMessage.classList.remove('hidden');
+
+            // --- UI change on error ---
+            fileInfoArea.classList.add('hidden');
+            uploadArea.classList.remove('hidden');
+            dashboard.classList.add('hidden'); // Also hide dashboard on error
+        }
+
+        function parseCSV(csvText) {
+            const lines = csvText.split(/\r\n|\n/).filter(line => line.trim() !== '');
+            if (lines.length <= 1) return [];
+
+            return lines.slice(1).map(line => {
+                const values = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g) || [];
+                if (values.length < 10) return null;
+                const cleanValue = str => typeof str === 'string' ? parseFloat(str.replace(/["$,]/g, '')) : 0;
+                return {
+                    symbol: values[0].replace(/"/g, ''), type: values[1].replace(/"/g, ''),
+                    quantity: cleanValue(values[2]), entryPrice: cleanValue(values[3]), exitPrice: cleanValue(values[4]),
+                    entryTime: values[5].replace(/"/g, ''), exitTime: values[6].replace(/"/g, ''),
+                    strategy: values[7].replace(/"/g, ''), swap: cleanValue(values[8]), profit: cleanValue(values[9])
+                };
+            }).filter(trade => trade !== null);
+        }
+
+        function analyzeTrades(trades, settings) {
+            const parseDate = (dateStr) => {
+                const parts = dateStr.match(/(\d+)\/(\d+)\/(\d+) (\d+):(\d+)/);
+                if (!parts) return new Date(0);
+                return new Date(`20${parts[1]}`, parts[2] - 1, parts[3], parts[4], parts[5]);
+            };
+
+            trades.sort((a, b) => parseDate(a.exitTime) - parseDate(b.exitTime));
+
+            let totalProfit = 0, totalWins = 0, totalLosses = 0, totalProfitFromWins = 0, totalLossFromLosses = 0;
+            let peakProfit = 0, maxDrawdown = 0;
+            const cumulativeProfitData = [{ profit: 0, time: null }], profitPerTrade = [], durationProfitData = [];
+            const profitBySymbol = {}, profitByStrategy = {}, monthlyPerformance = {}, perSymbolStats = {};
+            const dayOfWeekPerformance = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
+            const tradeTypeAnalysis = {
+                '売り': { wins: 0, losses: 0, totalProfit: 0, totalWinProfit: 0, totalLossAmount: 0 },
+                '買い': { wins: 0, losses: 0, totalProfit: 0, totalWinProfit: 0, totalLossAmount: 0 }
+            };
+
+            trades.forEach(trade => {
+                let commissionRate = 0;
+                if (settings.mode === 'bulk') {
+                    commissionRate = settings.bulkRate;
+                } else {
+                    commissionRate = settings.individualRates[trade.strategy] || 0;
+                }
+                
+                const originalProfit = trade.profit;
+                const netProfit = originalProfit > 0 ? originalProfit * (1 - commissionRate / 100) : originalProfit;
+                
+                totalProfit += netProfit; cumulativeProfitData.push({ profit: totalProfit, time: trade.exitTime }); profitPerTrade.push(netProfit);
+                if (!perSymbolStats[trade.symbol]) perSymbolStats[trade.symbol] = { wins: 0, losses: 0, total: 0 };
+                peakProfit = Math.max(peakProfit, totalProfit); maxDrawdown = Math.max(maxDrawdown, peakProfit - totalProfit);
+                profitBySymbol[trade.symbol] = (profitBySymbol[trade.symbol] || 0) + netProfit;
+                profitByStrategy[trade.strategy] = (profitByStrategy[trade.strategy] || 0) + netProfit;
+                
+                const exitDate = parseDate(trade.exitTime); const entryDate = parseDate(trade.entryTime);
+                if (exitDate.getTime() !== 0) {
+                     if(entryDate.getTime() !== 0) durationProfitData.push({ x: (exitDate - entryDate) / 3600000, y: netProfit });
+                    const monthKey = `${exitDate.getFullYear()}-${(exitDate.getMonth() + 1).toString().padStart(2, '0')}`;
+                    monthlyPerformance[monthKey] = (monthlyPerformance[monthKey] || 0) + netProfit;
+                    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                    dayOfWeekPerformance[dayNames[exitDate.getDay()]] += netProfit;
+                }
+
+                perSymbolStats[trade.symbol].total++;
+                if (originalProfit > 0) { totalWins++; totalProfitFromWins += netProfit; perSymbolStats[trade.symbol].wins++; } 
+                else if (originalProfit < 0) { totalLosses++; totalLossFromLosses += netProfit; perSymbolStats[trade.symbol].losses++; }
+
+                const tradeTypeKey = trade.type.includes('売り') ? '売り' : '買い';
+                if (tradeTypeAnalysis[tradeTypeKey]) {
+                    tradeTypeAnalysis[tradeTypeKey].totalProfit += netProfit;
+                    if (originalProfit > 0) {
+                        tradeTypeAnalysis[tradeTypeKey].wins++;
+                        tradeTypeAnalysis[tradeTypeKey].totalWinProfit += netProfit;
+                    } else if (originalProfit < 0) {
+                        tradeTypeAnalysis[tradeTypeKey].losses++;
+                        tradeTypeAnalysis[tradeTypeKey].totalLossAmount += netProfit;
+                    }
+                }
+            });
+
+            const averageWinningTrade = totalWins > 0 ? totalProfitFromWins / totalWins : 0;
+            const averageLosingTrade = totalLosses > 0 ? totalLossFromLosses / totalLosses : 0;
+            return {
+                totalTrades: trades.length, totalProfit, winRate: trades.length > 0 ? (totalWins / trades.length) * 100 : 0,
+                profitFactor: totalLossFromLosses !== 0 ? Math.abs(totalProfitFromWins / totalLossFromLosses) : Infinity,
+                riskRewardRatio: averageLosingTrade !== 0 ? Math.abs(averageWinningTrade / averageLosingTrade) : Infinity,
+                totalWins, totalLosses, averageWinningTrade, averageLosingTrade, maxDrawdown,
+                cumulativeProfitData, profitPerTrade, durationProfitData, profitBySymbol, profitByStrategy,
+                monthlyPerformance, dayOfWeekPerformance, tradeTypeAnalysis, perSymbolStats
+            };
+        }
+        
+        function updateDashboard(analysis, usdJpyRate) {
+            updateKPIs(analysis, usdJpyRate);
+            const interactiveChartOptions = { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { labels: { color: '#d1d5db' } }, tooltip: { position: 'nearest' } }, scales: { x: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } }, y: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } } } };
+            const simpleChartOptions = { ...interactiveChartOptions, interaction: { mode: 'point', intersect: true }, };
+            createCumulativeProfitChart(analysis.cumulativeProfitData, interactiveChartOptions); createProfitPerTradeChart(analysis.profitPerTrade, interactiveChartOptions);
+            createMonthlyPerformanceChart(analysis.monthlyPerformance, simpleChartOptions); createDayOfWeekChart(analysis.dayOfWeekPerformance, simpleChartOptions);
+            createDurationProfitChart(analysis.durationProfitData, simpleChartOptions); createProfitBySymbolChart(analysis.profitBySymbol, simpleChartOptions);
+            createProfitByStrategyChart(analysis.profitByStrategy, simpleChartOptions);
+            createTradeTypeAnalysisChart(analysis, simpleChartOptions);
+        }
+
+        function updateKPIs(analysis, usdJpyRate) {
+            const kpiGrid = document.getElementById('kpi-grid'); kpiGrid.innerHTML = '';
+            const formatCurrency = (value, currency, locale) => value.toLocaleString(locale, { style: 'currency', currency: currency, minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const isNetProfitMode = globalCommissionSettings.bulkRate > 0 || Object.values(globalCommissionSettings.individualRates).some(r => r > 0);
+            const createTooltipContent = (data, formatter) => Object.entries(data).sort((a, b) => b[1].total - a[1].total).map(([symbol, stats]) => formatter(symbol, stats)).join('');
+            const kpiTooltipHtml = (content) => `<div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-xs px-3 py-2 text-sm text-left font-normal text-white bg-gray-700 rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 invisible group-hover:visible z-10"><div class="font-semibold mb-1 border-b border-gray-600 pb-1">シンボル別内訳</div><div class="grid grid-cols-2 gap-x-4">${content}</div><div class="tooltip-arrow" data-popper-arrow></div></div>`;
+            const kpis = [
+                { label: isNetProfitMode ? '総利益 (純利益)' : '総利益', value: formatCurrency(analysis.totalProfit, 'USD', 'en-US'), color: analysis.totalProfit >= 0 ? 'text-green-400' : 'text-red-400', detailsButton: true, tooltip: `<div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-3 py-2 text-sm font-medium text-white bg-gray-700 rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 invisible group-hover:visible z-10"><span class="font-semibold">${formatCurrency(analysis.totalProfit * usdJpyRate, 'JPY', 'ja-JP')}</span><div class="text-xs text-gray-400 mt-1">レート: ${usdJpyRate.toFixed(2)}</div><div class="tooltip-arrow" data-popper-arrow></div></div>` },
+                { label: '最大ドローダウン', value: formatCurrency(-analysis.maxDrawdown, 'USD', 'en-US'), color: 'text-red-400' }, { label: 'プロフィットファクター', value: analysis.profitFactor === Infinity ? '∞' : analysis.profitFactor.toFixed(2), color: 'text-purple-400' },
+                { label: 'リスクリワード比', value: analysis.riskRewardRatio === Infinity ? '∞' : analysis.riskRewardRatio.toFixed(2), color: 'text-yellow-400' },
+                { label: '取引数 (勝ち/負け)', value: analysis.totalTrades.toLocaleString(), subValue: `${analysis.totalWins} / ${analysis.totalLosses}`, color: 'text-white', tooltip: kpiTooltipHtml(createTooltipContent(analysis.perSymbolStats, (symbol, stats) => `<span class="font-medium">${symbol}:</span><span class="text-right">${stats.total} (${stats.wins}/${stats.losses})</span>`)) },
+                { label: '勝率', value: `${analysis.winRate.toFixed(2)}%`, color: 'text-blue-400', tooltip: kpiTooltipHtml(createTooltipContent(analysis.perSymbolStats, (symbol, stats) => `<span class="font-medium">${symbol}:</span><span class="text-right">${(stats.total > 0 ? (stats.wins / stats.total) * 100 : 0).toFixed(1)}%</span>`)) },
+                { label: '平均利益 (勝ち)', value: formatCurrency(analysis.averageWinningTrade, 'USD', 'en-US'), color: 'text-green-400' }, { label: '平均損失 (負け)', value: formatCurrency(analysis.averageLosingTrade, 'USD', 'en-US'), color: 'text-red-400' },
+            ];
+            kpiGrid.innerHTML = kpis.map(kpi => `<div class="bg-gray-800 p-4 rounded-xl shadow-md text-center relative group flex flex-col justify-center"><div class="relative w-full flex justify-center items-center px-8"><p class="text-sm text-gray-400 font-medium whitespace-nowrap">${kpi.label}</p>${kpi.detailsButton ? `<button id="commission-details-btn" class="absolute right-0 text-xs bg-gray-700 hover:bg-gray-600 px-2 py-0.5 rounded-md transition-colors">詳細</button>` : ''}</div><p class="text-2xl font-bold ${kpi.color} mt-1">${kpi.value}</p>${kpi.subValue ? `<p class="text-sm text-gray-400">${kpi.subValue}</p>` : ''}${kpi.tooltip || ''}</div>`).join('');
+        }
+        
+        // --- Modal Event Listeners ---
+        document.getElementById('kpi-grid').addEventListener('click', e => {
+            if (e.target && e.target.id === 'commission-details-btn') {
+                modalCommissionSettings = JSON.parse(JSON.stringify(globalCommissionSettings));
+                populateIndividualCommissionTab();
+                updateModalState();
+                commissionModal.classList.remove('hidden');
+            }
+        });
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                const targetTabMode = e.currentTarget.dataset.tab;
+                if (modalCommissionSettings.mode === targetTabMode) return;
+
+                if (modalCommissionSettings.mode === 'bulk') {
+                    modalCommissionSettings.bulkRate = parseFloat(commissionSlider.value);
+                } else if (modalCommissionSettings.mode === 'individual') {
+                    const inputs = individualListContainer.querySelectorAll('input[data-strategy]');
+                    inputs.forEach(input => {
+                        const rate = parseInt(input.value, 10);
+                        const strategyName = input.dataset.strategy;
+                        modalCommissionSettings.individualRates[strategyName] = isNaN(rate) ? 0 : rate;
+                    });
+                }
+                
+                modalCommissionSettings.mode = targetTabMode;
+                updateModalState();
+            });
+        });
+        
+        commissionSlider.addEventListener('input', e => {
+            const val = parseFloat(e.target.value);
+            commissionValue.textContent = val.toFixed(1);
+            const profit = calculateRealtimeProfit(val);
+            realtimeProfitDisplay.textContent = profit.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+            realtimeProfitDisplay.className = `text-xl font-bold mt-1 ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`;
+        });
+
+        closeModalBtn.addEventListener('click', () => commissionModal.classList.add('hidden'));
+        
+        applyCommissionBtn.addEventListener('click', () => {
+            if (modalCommissionSettings.mode === 'bulk') {
+                modalCommissionSettings.bulkRate = parseFloat(commissionSlider.value);
+            } else {
+                const inputs = individualListContainer.querySelectorAll('input[data-strategy]');
+                inputs.forEach(input => {
+                    const rate = parseInt(input.value, 10);
+                    const strategyName = input.dataset.strategy;
+                    modalCommissionSettings.individualRates[strategyName] = isNaN(rate) ? 0 : rate;
+                });
+            }
+            
+            globalCommissionSettings = modalCommissionSettings;
+            localStorage.setItem('investmentDashboardCommissionSettings', JSON.stringify(globalCommissionSettings));
+            recalculateAndRedraw();
+            commissionModal.classList.add('hidden');
+        });
+
+        individualListContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('preset-btn')) {
+                const button = e.target;
+                const value = button.dataset.value;
+                const controls = button.closest('[data-strategy-controls]');
+                if (!controls) return;
+
+                const input = controls.querySelector('input[data-strategy]');
+                input.value = value;
+
+                controls.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+            }
+        });
+
+        individualListContainer.addEventListener('input', (e) => {
+            if (e.target.matches('input[data-strategy]')) {
+                const input = e.target;
+                const controls = input.closest('[data-strategy-controls]');
+                if (!controls) return;
+
+                const currentValue = input.value;
+                let matched = false;
+                controls.querySelectorAll('.preset-btn').forEach(btn => {
+                    if (btn.dataset.value === currentValue) {
+                        btn.classList.add('active');
+                        matched = true;
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
+            }
+        });
+
+        function populateIndividualCommissionTab() {
+            const strategies = [...new Set(originalTrades.map(t => t.strategy))].sort((a, b) => a.localeCompare(b));
+            const presetValues = [5, 10, 15, 20, 25, 30];
+            
+            individualListContainer.innerHTML = strategies.map(strategy => {
+                const currentValue = modalCommissionSettings.individualRates[strategy] !== undefined ? modalCommissionSettings.individualRates[strategy] : 15;
+                const buttonsHtml = presetValues.map(val => 
+                    `<button data-value="${val}" class="preset-btn ${currentValue === val ? 'active' : ''}">${val}%</button>`
+                ).join('');
+
+                return `
+                <div class="grid grid-cols-3 gap-4 items-center border-b border-gray-700 pb-2">
+                    <label class="text-gray-300 truncate pr-2 col-span-1">${strategy}</label>
+                    <div class="col-span-2 flex items-center justify-end flex-wrap gap-2" data-strategy-controls="${strategy}">
+                        <div class="flex items-center space-x-1 flex-shrink-0">${buttonsHtml}</div>
+                        <div class="flex items-center">
+                            <input type="number" min="0" max="100" step="1" data-strategy="${strategy}" 
+                                   value="${currentValue}" 
+                                   placeholder="カスタム" 
+                                   class="w-24 bg-gray-700 text-white rounded-md p-1.5 text-right focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <span class="ml-2 text-gray-400">%</span>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+        
+        function updateModalState() {
+            commissionSlider.value = modalCommissionSettings.bulkRate;
+            commissionValue.textContent = parseFloat(commissionSlider.value).toFixed(1);
+            const profit = calculateRealtimeProfit(commissionSlider.value);
+            realtimeProfitDisplay.textContent = profit.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+            realtimeProfitDisplay.className = `text-xl font-bold mt-1 ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`;
+            
+            tabs.forEach(t => t.classList.remove('active', 'border-indigo-500'));
+            const activeTab = document.querySelector(`.tab-btn[data-tab="${modalCommissionSettings.mode}"]`);
+            if (activeTab) {
+                activeTab.classList.add('active', 'border-indigo-500');
+            }
+
+            if (modalCommissionSettings.mode === 'bulk') {
+                bulkTabContent.classList.remove('hidden');
+                individualTabContent.classList.add('hidden');
+            } else {
+                bulkTabContent.classList.add('hidden');
+                individualTabContent.classList.remove('hidden');
+            }
+        }
+
+        // --- Chart Creation Functions ---
+        function destroyChart(chartId) { if (chartInstances[chartId]) { chartInstances[chartId].destroy(); } }
+        const crosshairPlugin = { id: 'crosshair', afterDraw: chart => { if (chart.tooltip?.getActiveElements().length) { const activeElement = chart.tooltip.getActiveElements()[0]; const x = activeElement.element.x; const yAxis = chart.scales.y; const ctx = chart.ctx; ctx.save(); ctx.beginPath(); ctx.moveTo(x, yAxis.top); ctx.lineTo(x, yAxis.bottom); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; ctx.stroke(); ctx.restore(); } } };
+        
+        function createCumulativeProfitChart(chartData, options) {
+            const chartId = 'cumulativeProfitChart';
+            destroyChart(chartId);
+            const ctx = document.getElementById(chartId).getContext('2d');
+            const labels = chartData.map(d => d.time);
+            if (labels.length > 0 && labels[0] === null) labels[0] = '開始';
+            
+            chartInstances[chartId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '累積利益 (USD)',
+                        data: chartData.map(d => d.profit),
+                        fill: true,
+                        tension: 0.1,
+                        pointRadius: 0,
+                        segment: {
+                            borderColor: ctx => (ctx.p0.parsed.y < 0 || ctx.p1.parsed.y < 0) ? '#f87171' : '#34d399',
+                            backgroundColor: ctx => (ctx.p0.parsed.y < 0 || ctx.p1.parsed.y < 0) ? 'rgba(248, 113, 113, 0.1)' : 'rgba(52, 211, 153, 0.1)',
+                        }
+                    }]
+                },
+                options: {
+                    ...options,
+                    plugins: {
+                        ...options.plugins,
+                        legend: { display: false },
+                        zoom: {
+                            pan: { enabled: true, mode: 'x' },
+                            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+                        }
+                    },
+                    scales: {
+                        x: { ...options.scales.x, ticks: { ...options.scales.x.ticks, autoSkip: true, maxTicksLimit: 15, maxRotation: 45, minRotation: 0 } },
+                        y: { ...options.scales.y }
+                    }
+                },
+                plugins: [crosshairPlugin, ChartZoom]
+            });
+        }
+
+        function createProfitPerTradeChart(data, options) {
+            const chartId = 'profitPerTradeChart';
+            destroyChart(chartId);
+            
+            let yAxisMax = 100; 
+            if (data.length > 0) {
+                const maxAbsValue = Math.max(...data.map(v => Math.abs(v)));
+                yAxisMax = maxAbsValue === 0 ? 100 : maxAbsValue * 1.1; 
+            }
+           
+            const ctx = document.getElementById(chartId).getContext('2d');
+            chartInstances[chartId] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Array.from({ length: data.length }, (_, i) => `T ${i + 1}`),
+                    datasets: [{
+                        label: '利益 (USD)',
+                        data: data,
+                        backgroundColor: data.map(v => v >= 0 ? 'rgba(52, 211, 153, 0.85)' : 'rgba(248, 113, 113, 0.85)'),
+                    }]
+                },
+                options: {
+                    ...options,
+                    plugins: { ...options.plugins, legend: { display: false }, zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } },
+                    scales: {
+                        x: { ...options.scales.x, ticks: { ...options.scales.x.ticks, autoSkip: true, maxTicksLimit: 10 } },
+                        y: { 
+                            ...options.scales.y,
+                            min: -yAxisMax,
+                            max: yAxisMax
+                        }
+                    }
+                },
+                plugins: [crosshairPlugin, ChartZoom]
+            });
+        }
+        function createMonthlyPerformanceChart(data, options) { const chartId = 'monthlyPerformanceChart'; destroyChart(chartId); const sortedMonths = Object.keys(data).sort(); const labels = sortedMonths; const values = sortedMonths.map(month => data[month]); const ctx = document.getElementById(chartId).getContext('2d'); chartInstances[chartId] = new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [{ label: '月次利益 (USD)', data: values, backgroundColor: values.map(v => v >= 0 ? 'rgba(96, 165, 250, 0.8)' : 'rgba(251, 146, 60, 0.8)'), }] }, options: { ...options, plugins: { ...options.plugins, legend: { display: false } }, scales: { x: { ...options.scales.x, type: 'category' }, y: { ...options.scales.y } } } }); }
+        function createDayOfWeekChart(data, options) { const chartId = 'dayOfWeekChart'; destroyChart(chartId); const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']; const dayLabels = {'Mon': '月', 'Tue': '火', 'Wed': '水', 'Thu': '木', 'Fri': '金', 'Sat': '土', 'Sun': '日'}; const labels = dayOrder.map(day => dayLabels[day]); const values = dayOrder.map(day => data[day]); const ctx = document.getElementById(chartId).getContext('2d'); chartInstances[chartId] = new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [{ label: '曜日別利益 (USD)', data: values, backgroundColor: values.map(v => v >= 0 ? 'rgba(192, 132, 252, 0.8)' : 'rgba(251, 146, 60, 0.8)'), }] }, options: { ...options, plugins: { ...options.plugins, legend: { display: false } } } }); }
+        function createDurationProfitChart(data, options) { const chartId = 'durationProfitChart'; destroyChart(chartId); const ctx = document.getElementById(chartId).getContext('2d'); chartInstances[chartId] = new Chart(ctx, { type: 'scatter', data: { datasets: [{ label: 'トレード', data: data, pointBackgroundColor: data.map(d => d.y >= 0 ? 'rgba(52, 211, 153, 0.7)' : 'rgba(248, 113, 113, 0.7)'), pointBorderColor: 'rgba(0,0,0,0)', pointRadius: 5, }] }, options: { ...options, plugins: { ...options.plugins, legend: { display: false }, tooltip: { callbacks: { label: function(context) { const label = ` 利益: ${context.parsed.y.toFixed(2)} USD`; const duration = context.parsed.x; const hours = Math.floor(duration); const minutes = Math.round((duration - hours) * 60); return [` 時間: ${hours}h ${minutes}m`, label]; } } }, zoom: { pan: { enabled: true, mode: 'xy' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' } } }, scales: { x: { ...options.scales.x, title: { display: true, text: '取引時間 (時間)', color: '#9ca3af' } }, y: { ...options.scales.y, title: { display: true, text: '損益 (USD)', color: '#9ca3af' } } } }, plugins: [ChartZoom] }); }
+        function createProfitBySymbolChart(data, options) { const chartId = 'profitBySymbolChart'; destroyChart(chartId); const sortedData = Object.entries(data).sort((a, b) => b[1] - a[1]); const labels = sortedData.map(item => item[0]); const values = sortedData.map(item => item[1]); const ctx = document.getElementById(chartId).getContext('2d'); chartInstances[chartId] = new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [{ label: '利益 (USD)', data: values, backgroundColor: values.map(v => v >= 0 ? 'rgba(52, 211, 153, 0.8)' : 'rgba(248, 113, 113, 0.8)'), }] }, options: { ...options, plugins: { ...options.plugins, legend: { display: false } } } }); }
+        function createProfitByStrategyChart(data, options) {
+            const chartId = 'profitByStrategyChart';
+            destroyChart(chartId);
+            const sortedData = Object.entries(data).sort((a, b) => b[1] - a[1]);
+            const labels = sortedData.map(item => item[0]);
+            const values = sortedData.map(item => item[1]);
+
+            const wrapper = document.getElementById('profitByStrategyChartWrapper');
+            if (!wrapper) {
+                console.error('profitByStrategyChartWrapper element not found.');
+                return;
+            }
+
+            const barHeight = 35; 
+            const chartPadding = 40;
+            const calculatedHeight = (labels.length * barHeight) + chartPadding;
+            const parentContainer = wrapper.parentElement;
+            const parentHeight = parentContainer ? parentContainer.clientHeight : 300; 
+            const newHeight = Math.max(calculatedHeight, parentHeight);
+            wrapper.style.height = `${newHeight}px`;
+
+            const ctx = document.getElementById(chartId).getContext('2d');
+            const chartOptions = {
+                ...options,
+                indexAxis: 'y',
+                plugins: { ...options.plugins, legend: { display: false } },
+                scales: { ...options.scales, y: { ...(options.scales?.y || {}), ticks: { ...(options.scales?.y?.ticks || {}), autoSkip: false, color: '#9ca3af' } } }
+            };
+            
+            chartInstances[chartId] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '利益 (USD)',
+                        data: values,
+                        backgroundColor: values.map(v => v >= 0 ? 'rgba(96, 165, 250, 0.8)' : 'rgba(251, 146, 60, 0.8)'),
+                    }]
+                },
+                options: chartOptions
+            });
+        }
+        
+        // Custom Tooltip Handler
+        const getOrCreateTooltip = (chart) => {
+            let tooltipEl = chart.canvas.parentNode.querySelector('div#chartjs-tooltip');
+            if (!tooltipEl) {
+                tooltipEl = document.createElement('div');
+                tooltipEl.id = 'chartjs-tooltip';
+                tooltipEl.innerHTML = '<table></table>';
+                chart.canvas.parentNode.appendChild(tooltipEl);
+            }
+            return tooltipEl;
+        };
+
+        const externalTooltipHandler = (context) => {
+            const {chart, tooltip} = context;
+            const tooltipEl = getOrCreateTooltip(chart);
+
+            if (tooltip.opacity === 0) {
+                tooltipEl.style.opacity = 0;
+                return;
+            }
+
+            const tradeTypeData = chart.config.options.plugins.tooltip.tradeTypeData;
+            if (!tradeTypeData || tooltip.dataPoints.length === 0) {
+                 tooltipEl.style.opacity = 0;
+                return;
+            }
+
+            const dataPoint = tooltip.dataPoints[0];
+            const tradeType = dataPoint.label;
+            const typeData = tradeTypeData[tradeType];
+            const totalWinProfit = typeData.totalWinProfit;
+            const totalLossAmount = Math.abs(typeData.totalLossAmount);
+
+            if (totalWinProfit === 0 && totalLossAmount === 0) {
+                tooltipEl.style.opacity = 0;
+                return;
+            }
+
+            // Tooltip content
+            let innerHtml = `<div class="font-bold text-lg mb-2 text-center border-b border-gray-600 pb-1">${tradeType} 損益内訳</div>`;
+            innerHtml += `<div class="tooltip-pie-container"><canvas id="tooltip-pie-chart"></canvas></div>`;
+
+            const total = totalWinProfit + totalLossAmount;
+            const winPercentage = total > 0 ? (totalWinProfit / total * 100).toFixed(1) : 0;
+            const lossPercentage = total > 0 ? (totalLossAmount / total * 100).toFixed(1) : 0;
+            
+            let table = '<div class="space-y-1 text-xs mt-2">';
+            table += `<div class="grid grid-cols-3 gap-2 items-center">
+                        <span class="truncate col-span-1">総利益</span>
+                        <span class="text-right col-span-1 text-green-400">$${totalWinProfit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                        <span class="text-right col-span-1">${winPercentage}%</span>
+                      </div>`;
+            table += `<div class="grid grid-cols-3 gap-2 items-center">
+                        <span class="truncate col-span-1">総損失</span>
+                        <span class="text-right col-span-1 text-red-400">$${totalLossAmount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                        <span class="text-right col-span-1">${lossPercentage}%</span>
+                      </div>`;
+            table += '</div>';
+            innerHtml += table;
+            
+            tooltipEl.innerHTML = innerHtml;
+
+            // Position tooltip
+            const {offsetLeft: positionX, offsetTop: positionY} = chart.canvas;
+            tooltipEl.style.opacity = 1;
+            tooltipEl.style.left = positionX + tooltip.caretX + 15 + 'px';
+            tooltipEl.style.top = positionY + tooltip.caretY - tooltipEl.offsetHeight / 2 + 'px';
+
+            // Create Pie Chart inside tooltip
+            const pieCtx = document.getElementById('tooltip-pie-chart').getContext('2d');
+            if (chartInstances.tooltipPie) {
+                chartInstances.tooltipPie.destroy();
+            }
+            
+            const pieLabels = ['総利益', '総損失'];
+            const pieData = [totalWinProfit, totalLossAmount];
+            
+            chartInstances.tooltipPie = new Chart(pieCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: pieLabels,
+                    datasets: [{
+                        data: pieData,
+                        backgroundColor: [
+                           'rgba(52, 211, 153, 0.8)',
+                           'rgba(248, 113, 113, 0.8)'
+                        ],
+                        borderColor: '#1f2937',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
+                }
+            });
+        };
+
+        function createTradeTypeAnalysisChart(analysis, options) {
+            const data = analysis.tradeTypeAnalysis;
+            const chartId = 'tradeTypeAnalysisChart';
+            destroyChart(chartId);
+            const ctx = document.getElementById(chartId).getContext('2d');
+            chartInstances[chartId] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['売り', '買い'],
+                    datasets: [
+                        { label: '勝ちトレード数', data: [data['売り'].wins, data['買い'].wins], backgroundColor: 'rgba(52, 211, 153, 0.8)' },
+                        { label: '負けトレード数', data: [data['売り'].losses, data['買い'].losses], backgroundColor: 'rgba(248, 113, 113, 0.8)' }
+                    ]
+                },
+                options: {
+                    ...options,
+                    scales: { x: { ...options.scales.x, stacked: true }, y: { ...options.scales.y, stacked: true, beginAtZero: true } },
+                    plugins: {
+                        ...options.plugins,
+                        tooltip: {
+                            enabled: false,
+                            external: externalTooltipHandler,
+                            tradeTypeData: data // Pass full data to custom tooltip
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+
